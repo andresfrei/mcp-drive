@@ -42,10 +42,13 @@ export class DrivesConfigLoader {
     try {
       const configPath = path.resolve(CONFIG_PATH);
 
+      // Crear archivo con estructura vacía si no existe
       if (!fs.existsSync(configPath)) {
-        throw new Error(
-          `Config file not found: ${configPath}. Create it from drives-config.example.json`
-        );
+        const emptyConfig: DrivesConfig = { drives: {} };
+        fs.writeFileSync(configPath, JSON.stringify(emptyConfig, null, 2));
+        logger.info(`Created empty config file at ${configPath}`);
+        this.config = emptyConfig;
+        return emptyConfig;
       }
 
       const rawConfig = fs.readFileSync(configPath, "utf-8");
