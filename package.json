@@ -1,6 +1,6 @@
 {
   "name": "@automoviles/mcp-drive-server",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "MCP Server for Google Drive multi-account access",
   "main": "dist/index.js",
   "scripts": {

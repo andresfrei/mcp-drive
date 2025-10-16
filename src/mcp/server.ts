@@ -21,9 +21,10 @@ import { executeToolHandler } from "./tools-handler.js";
  * - Listado de herramientas disponibles
  * - Ejecución de herramientas con autenticación
  *
+ * @param apiKey - API key opcional extraído del header HTTP
  * @returns Servidor MCP configurado y listo para conectar
  */
-export function createMCPServer(): Server {
+export function createMCPServer(apiKey?: string): Server {
   // Crear instancia del servidor
   const server = new Server(
     {
@@ -52,8 +53,7 @@ export function createMCPServer(): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
-    // Validar autenticación (si está configurada)
-    const apiKey = (request.params as any)._meta?.apiKey;
+    // Validar autenticación usando el API key del contexto HTTP
     if (!validateApiKey(apiKey)) {
       throw new Error("Unauthorized: Invalid API key");
     }

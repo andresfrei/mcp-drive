@@ -46,6 +46,20 @@ async function main() {
 
     // Crear aplicación Express
     const app = express();
+
+    // Configurar CORS para cliente NestJS
+    app.use((req, res, next) => {
+      res.setHeader("Access-Control-Allow-Origin", "*"); // Ajustar en producción
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-API-Key");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+
+      if (req.method === "OPTIONS") {
+        return res.status(200).end();
+      }
+      next();
+    });
+
     app.use(express.json());
 
     // Health check endpoint
@@ -53,12 +67,32 @@ async function main() {
       res.json({ status: "healthy", timestamp: new Date().toISOString() });
     });
 
+    // MCP server info endpoint (útil para debugging)
+    app.get("/mcp/info", (_req, res) => {
+      res.json({
+        name: "google-drive-mcp",
+        version: "1.0.0",
+        transport: "sse",
+        endpoints: {
+          sse: "/sse",
+          message: "/message",
+          health: "/health",
+          info: "/mcp/info",
+        },
+        capabilities: ["tools"],
+        authenticated: !!process.env.MCP_API_KEY,
+      });
+    });
+
     // Endpoint SSE para MCP
     app.post("/sse", async (req, res) => {
       logger.info("New SSE connection established");
 
-      // Crear servidor MCP para esta conexión
-      const server = createMCPServer();
+      // Extraer API key del header (si existe)
+      const apiKey = req.headers["x-api-key"] as string | undefined;
+
+      // Crear servidor MCP para esta conexión con contexto de auth
+      const server = createMCPServer(apiKey);
 
       // Configurar transporte SSE
       const transport = new SSEServerTransport("/message", res);

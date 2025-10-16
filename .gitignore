@@ -10,3 +10,6 @@ drives-config.json
 credentials/
 *.db
 *.sqlite
+
+# VSCode workspace settings (may contain local paths)
+.vscode/settings.json
