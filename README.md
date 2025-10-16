@@ -40,7 +40,7 @@ src/
 
 ```bash
 # Clonar repositorio
-git clone <repository-url>
+git clone https://github.com/andresfrei/mcp-drive.git
 cd mcp-drive
 
 # Instalar dependencias
