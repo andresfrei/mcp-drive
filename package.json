@@ -1,0 +1,34 @@
+{
+  "name": "@automoviles/mcp-drive-server",
+  "version": "1.0.0",
+  "description": "MCP Server for Google Drive multi-account access",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "test": "jest",
+    "docker:logs": "docker logs -f automoviles_mcp_drive_dev",
+    "docker:restart": "docker restart automoviles_mcp_drive_dev"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "dotenv": "^16.4.1",
+    "google-auth-library": "^9.6.3",
+    "googleapis": "^140.0.0",
+    "winston": "^3.11.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "@typescript-eslint/eslint-plugin": "^6.20.0",
+    "@typescript-eslint/parser": "^6.20.0",
+    "eslint": "^8.56.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

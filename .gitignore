@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+
+# Sensitive files
+drives-config.json
+credentials/
+*.db
+*.sqlite
