@@ -4,6 +4,9 @@ Servidor MCP (Model Context Protocol) para gestión de múltiples cuentas de Goo
 
 ## 🎯 Características
 
+- ✅ **Servidor HTTP/SSE**: Expone API REST con Server-Sent Events para conexiones MCP
+- ✅ **Multi-cliente**: Múltiples clientes pueden conectarse simultáneamente
+- ✅ **Puerto configurable**: Ideal para VPS con múltiples servicios MCP
 - ✅ **Multi-cuenta**: Gestiona múltiples cuentas de Google Drive simultáneamente
 - ✅ **Autenticación segura**: Service Account con permisos de solo lectura
 - ✅ **Operaciones de archivos**: Listar, buscar y obtener contenido
@@ -12,6 +15,7 @@ Servidor MCP (Model Context Protocol) para gestión de múltiples cuentas de Goo
 - ✅ **Logging estructurado**: Winston con múltiples niveles
 - ✅ **Validación robusta**: Zod schemas para configuración
 - ✅ **API key opcional**: Autenticación de requests MCP
+- ✅ **Docker-ready**: Configuración lista para deployment en VPS
 
 ## 📁 Estructura del Proyecto
 
@@ -36,7 +40,9 @@ src/
   index.ts              # Entry point del servidor
 ```
 
-## 🚀 Instalación Local
+## 🚀 Instalación y Deployment
+
+### Desarrollo Local
 
 ```bash
 # Clonar repositorio
@@ -46,18 +52,39 @@ cd mcp-drive
 # Instalar dependencias
 pnpm install
 
-# Configurar environment (opcional)
+# Configurar environment
 cp .env.example .env
 nano .env
 
 # Desarrollo (con hot reload)
 pnpm dev
 
-# Build
-pnpm build
+# El servidor estará disponible en http://localhost:3000
+```
 
-# Producción
-pnpm start
+### Producción con Docker
+
+```bash
+# Build y run con docker-compose
+docker-compose up -d
+
+# Ver logs
+docker-compose logs -f mcp-drive
+
+# Detener
+docker-compose down
+```
+
+### VPS con Múltiples MCPs
+
+Para ejecutar varios servidores MCP en el mismo VPS, configura diferentes puertos:
+
+```bash
+# MCP Drive en puerto 3001
+MCP_DRIVE_PORT=3001 docker-compose up -d
+
+# En otro directorio, otro MCP en puerto 3002
+cd ../otro-mcp && MCP_OTRO_PORT=3002 docker-compose up -d
 ```
 
 ## ⚙️ Configuración
@@ -93,10 +120,14 @@ El servidor usa `drives-config.json` para gestionar cuentas:
 
 **Nota**: El archivo se crea automáticamente vacío si no existe. Usa la herramienta `add_drive` para agregar cuentas.
 
-### 3. Variables de Entorno (Opcional)
+### 3. Variables de Entorno
 
 ```env
-# Ruta personalizada del archivo de configuración
+# Configuración del servidor HTTP
+PORT=3000                    # Puerto del servidor (default: 3000)
+HOST=0.0.0.0                # Host de escucha (0.0.0.0 para Docker)
+
+# Configuración de Drives
 DRIVES_CONFIG_PATH=./drives-config.json
 
 # Nivel de logging (debug, info, warn, error)
@@ -104,6 +135,9 @@ LOG_LEVEL=info
 
 # API key para autenticación de requests MCP (opcional)
 MCP_API_KEY=tu_api_key_seguro
+
+# Para docker-compose: puerto externo
+MCP_DRIVE_PORT=3000
 ```
 
 ## 🛠️ Herramientas MCP
@@ -245,12 +279,121 @@ Busca archivos por nombre en un Drive específico.
 }
 ```
 
-## 🔒 Seguridad
+## 🌐 Endpoints HTTP
+
+El servidor expone los siguientes endpoints:
+
+### Health Check
+
+```bash
+GET http://localhost:3000/health
+
+# Respuesta
+{
+  "status": "healthy",
+  "timestamp": "2024-10-16T10:30:00.000Z"
+}
+```
+
+### Conexión MCP (SSE)
+
+```bash
+POST http://localhost:3000/sse
+Content-Type: application/json
+
+# Establece conexión Server-Sent Events para comunicación MCP
+```
+
+### Mensajes MCP
+
+```bash
+POST http://localhost:3000/message
+Content-Type: application/json
+
+# Endpoint usado internamente por el transporte SSE
+```
+
+## � Conectar desde Cliente
+
+Tu aplicación orquestadora debe usar el **SSE Client Transport**:
+
+```typescript
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+
+// Conectar al servidor MCP
+const transport = new SSEClientTransport(new URL("http://tu-vps:3001/sse"));
+
+const client = new Client(
+  {
+    name: "orchestrator",
+    version: "1.0.0",
+  },
+  {
+    capabilities: {},
+  }
+);
+
+await client.connect(transport);
+
+// Listar herramientas disponibles
+const tools = await client.listTools();
+
+// Ejecutar herramienta
+const result = await client.callTool({
+  name: "list_drives",
+  arguments: {},
+});
+
+console.log(result);
+```
+
+## �🔒 Seguridad
 
 - **Solo lectura**: Service Account con scope `drive.readonly`
 - **Autenticación opcional**: Soporta API key via `MCP_API_KEY`
 - **Validación robusta**: Esquemas Zod para todos los inputs
 - **Logging seguro**: No expone credenciales en logs
+
+### Seguridad en Producción (VPS)
+
+⚠️ **Importante**: Este servidor usa HTTP sin cifrado. Para producción:
+
+1. **Reverse Proxy con SSL** (nginx/traefik)
+2. **Firewall**: Restringir acceso por IP
+3. **Rate Limiting**: Prevenir abuso
+4. **API Key**: Habilitar autenticación
+
+Ejemplo nginx con SSL:
+
+```nginx
+upstream mcp_drive {
+    server localhost:3001;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name mcp-drive.tudominio.com;
+
+    ssl_certificate /etc/letsencrypt/live/tudominio.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/tudominio.com/privkey.pem;
+
+    # Solo permitir IP del orquestador
+    allow 192.168.1.100;
+    deny all;
+
+    location / {
+        proxy_pass http://mcp_drive;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 86400;
+    }
+}
+```
 
 ## 📊 Logging
 
@@ -264,32 +407,97 @@ Configurar nivel via `LOG_LEVEL` env variable.
 
 ## 🐳 Docker
 
+### Docker Compose (Recomendado)
+
+```bash
+# Levantar servicio
+docker-compose up -d
+
+# Ver logs en tiempo real
+docker-compose logs -f
+
+# Detener servicio
+docker-compose down
+
+# Reconstruir después de cambios
+docker-compose up -d --build
+```
+
+### Docker Manual
+
 ```bash
 # Build
 docker build -t mcp-drive-server .
 
 # Run
-docker run -p 3000:3000 \
-  -v $(pwd)/credentials:/app/credentials \
-  -v $(pwd)/drives-config.json:/app/drives-config.json \
-  --env-file .env \
+docker run -d \
+  --name mcp-drive \
+  -p 3001:3000 \
+  -e PORT=3000 \
+  -e HOST=0.0.0.0 \
+  -e LOG_LEVEL=info \
+  -v $(pwd)/drives-config.json:/app/config/drives-config.json \
+  -v $(pwd)/keys:/app/keys:ro \
+  -v $(pwd)/logs:/app/logs \
+  mcp-drive-server
+
+# Ver logs
+docker logs -f mcp-drive
+```
+
+### Múltiples Instancias en VPS
+
+```bash
+# Instancia 1 - Drive Personal (puerto 3001)
+docker run -d --name mcp-drive-personal \
+  -p 3001:3000 \
+  -v $(pwd)/config-personal:/app/config \
+  mcp-drive-server
+
+# Instancia 2 - Drive Trabajo (puerto 3002)
+docker run -d --name mcp-drive-work \
+  -p 3002:3000 \
+  -v $(pwd)/config-work:/app/config \
   mcp-drive-server
 ```
 
 ## 🧪 Desarrollo
 
 ```bash
-# Desarrollo con hot reload
+# Desarrollo local con hot reload
 pnpm dev
+# Servidor en http://localhost:3000
 
-# Verificar tipos
+# Build para producción
 pnpm build
 
-# Ver logs de Docker (si aplica)
-pnpm docker:logs
+# Ejecutar versión compilada
+pnpm start
+
+# Ver logs de Docker
+docker-compose logs -f
 
 # Reiniciar contenedor
-pnpm docker:restart
+docker-compose restart
+
+# Reconstruir imagen
+docker-compose up -d --build
+```
+
+## 📊 Monitoreo
+
+```bash
+# Health check
+curl http://localhost:3000/health
+
+# Logs en tiempo real
+docker-compose logs -f mcp-drive
+
+# Stats de recursos
+docker stats mcp-drive
+
+# Inspeccionar contenedor
+docker inspect mcp-drive
 ```
 
 ## 📝 Tipos MIME Soportados
@@ -324,10 +532,24 @@ Este proyecto está bajo licencia MIT.
 
 ## 🆘 Troubleshooting
 
+### Servidor no inicia
+
+```bash
+# Verificar que el puerto no esté en uso
+netstat -ano | findstr :3000  # Windows
+lsof -i :3000                 # Linux/Mac
+
+# Cambiar puerto si está ocupado
+PORT=3001 pnpm dev
+```
+
 ### Error: "Service account file not found"
 
 - Verifica que el archivo JSON existe en la ruta especificada
-- Usa rutas absolutas o relativas correctas
+- En Docker, asegúrate de montar el volumen correctamente:
+  ```bash
+  -v $(pwd)/keys:/app/keys:ro
+  ```
 
 ### Error: "Unauthorized: Invalid API key"
 
@@ -340,7 +562,32 @@ Este proyecto está bajo licencia MIT.
 - Confirma que el scope sea `drive.readonly`
 - Revisa permisos de la carpeta/archivo en Drive
 
+### Cliente no puede conectar (VPS)
+
+```bash
+# Verificar que el puerto esté expuesto
+docker ps | grep mcp-drive
+
+# Verificar firewall
+sudo ufw status
+sudo ufw allow 3001/tcp
+
+# Test de conectividad
+curl http://vps-ip:3001/health
+```
+
 ### Logs no aparecen
 
 - Configura `LOG_LEVEL=debug` para ver más detalles
 - Verifica permisos de escritura en la carpeta del proyecto
+- En Docker: `docker-compose logs -f mcp-drive`
+
+### Alto uso de memoria
+
+- Ajusta límites en `docker-compose.yml`:
+  ```yaml
+  deploy:
+    resources:
+      limits:
+        memory: 256M
+  ```

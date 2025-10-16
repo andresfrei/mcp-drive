@@ -41,9 +41,11 @@ RUN mkdir -p /app/config /app/keys
 # Variables de entorno por defecto
 ENV NODE_ENV=production
 ENV DRIVES_CONFIG_PATH=/app/config/drives-config.json
+ENV PORT=3000
+ENV HOST=0.0.0.0
 
-# Exponer puerto si es necesario (MCP usa stdio por defecto)
-# EXPOSE 3000
+# Exponer puerto para HTTP/SSE
+EXPOSE 3000
 
 # Comando de inicio
 CMD ["node", "dist/index.js"]

@@ -22,10 +22,12 @@ services:
       - NODE_ENV=production
       - DRIVES_CONFIG_PATH=/app/config/drives-config.json
       - LOG_LEVEL=info
+      - PORT=3000
+      - HOST=0.0.0.0
 
-    # MCP usa stdio, no necesita puertos
-    # ports:
-    #   - "3000:3000"
+    # Puerto HTTP/SSE para MCP
+    ports:
+      - "${MCP_DRIVE_PORT:-3000}:3000"
 
     # Recursos (ajustar según necesidad)
     deploy:
