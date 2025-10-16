@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  mcp-drive:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-drive
+    restart: unless-stopped
+
+    volumes:
+      # Persistir configuración de drives
+      - ./drives-config.json:/app/config/drives-config.json
+
+      # Montar directorio con service account keys
+      - ./keys:/app/keys:ro
+
+      # Logs persistentes (opcional)
+      - ./logs:/app/logs
+
+    environment:
+      - NODE_ENV=production
+      - DRIVES_CONFIG_PATH=/app/config/drives-config.json
+      - LOG_LEVEL=info
+
+    # MCP usa stdio, no necesita puertos
+    # ports:
+    #   - "3000:3000"
+
+    # Recursos (ajustar según necesidad)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
