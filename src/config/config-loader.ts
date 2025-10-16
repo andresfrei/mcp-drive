@@ -57,14 +57,17 @@ export class DrivesConfigLoader {
       // Validar estructura con Zod para garantizar tipos correctos
       this.config = DrivesConfigSchema.parse(parsedConfig);
 
-      // Validar que todos los archivos de cuenta de servicio existan
+      // Validar archivos de cuenta de servicio solo si usan serviceAccountPath
       for (const [driveId, driveConfig] of Object.entries(this.config.drives)) {
-        const saPath = path.resolve(driveConfig.serviceAccountPath);
-        if (!fs.existsSync(saPath)) {
-          throw new Error(
-            `Service account file not found for drive "${driveId}": ${saPath}`
-          );
+        if (driveConfig.serviceAccountPath) {
+          const saPath = path.resolve(driveConfig.serviceAccountPath);
+          if (!fs.existsSync(saPath)) {
+            throw new Error(
+              `Service account file not found for drive "${driveId}": ${saPath}`
+            );
+          }
         }
+        // Si usa credentials inline, no hay archivo que validar
       }
 
       logger.info(

@@ -47,13 +47,18 @@ export class GoogleDriveService {
 
     // Crear nuevo cliente autenticado
     const driveConfig = drivesConfigLoader.getDriveConfig(driveId);
-    const keyFilePath = path.resolve(driveConfig.serviceAccountPath);
 
     // Autenticar usando Service Account con permisos de solo lectura
-    const auth = new GoogleAuth({
-      keyFile: keyFilePath,
-      scopes: ["https://www.googleapis.com/auth/drive.readonly"], // Solo lectura
-    });
+    // Soporta credenciales inline o archivo de service account
+    const auth = driveConfig.credentials
+      ? new GoogleAuth({
+          credentials: driveConfig.credentials,
+          scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+        })
+      : new GoogleAuth({
+          keyFile: path.resolve(driveConfig.serviceAccountPath!),
+          scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+        });
 
     // Crear instancia del cliente de Drive API v3
     const drive = google.drive({ version: "v3", auth });

@@ -12,14 +12,41 @@ import { z } from "zod";
 // ============================================================================
 
 /**
- * Esquema Zod para la configuración individual de un Drive
- * Valida: nombre, descripción opcional y ruta de la cuenta de servicio
+ * Esquema Zod para credenciales de Service Account inline
  */
-export const DriveConfigSchema = z.object({
-  name: z.string(),
-  description: z.string().optional(),
-  serviceAccountPath: z.string(),
+export const ServiceAccountCredentialsSchema = z.object({
+  type: z.literal("service_account"),
+  project_id: z.string(),
+  private_key_id: z.string(),
+  private_key: z.string(),
+  client_email: z.string(),
+  client_id: z.string(),
+  auth_uri: z.string(),
+  token_uri: z.string(),
+  auth_provider_x509_cert_url: z.string(),
+  client_x509_cert_url: z.string(),
+  universe_domain: z.string().optional(),
 });
+
+/**
+ * Esquema Zod para la configuración individual de un Drive
+ * Soporta credenciales inline O ruta a archivo de service account
+ */
+export const DriveConfigSchema = z
+  .object({
+    name: z.string().optional(),
+    driveId: z.string().optional(),
+    description: z.string().optional(),
+    rootFolderId: z.string().optional(),
+    // Credenciales inline (objeto JSON completo)
+    credentials: ServiceAccountCredentialsSchema.optional(),
+    // O ruta a archivo de service account
+    serviceAccountPath: z.string().optional(),
+  })
+  .refine((data) => data.credentials || data.serviceAccountPath, {
+    message:
+      "Se requiere 'credentials' (inline) o 'serviceAccountPath' (archivo)",
+  });
 
 /**
  * Esquema Zod para la configuración completa de todos los Drives
@@ -28,6 +55,11 @@ export const DriveConfigSchema = z.object({
 export const DrivesConfigSchema = z.object({
   drives: z.record(z.string(), DriveConfigSchema),
 });
+
+/** Tipo inferido: credenciales de service account */
+export type ServiceAccountCredentials = z.infer<
+  typeof ServiceAccountCredentialsSchema
+>;
 
 /** Tipo inferido: configuración de un Drive individual */
 export type DriveConfig = z.infer<typeof DriveConfigSchema>;
