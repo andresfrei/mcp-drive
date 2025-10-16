@@ -295,11 +295,33 @@ GET http://localhost:3000/health
 }
 ```
 
+### MCP Server Info (Debugging)
+
+```bash
+GET http://localhost:3000/mcp/info
+
+# Respuesta
+{
+  "name": "google-drive-mcp",
+  "version": "1.0.0",
+  "transport": "sse",
+  "endpoints": {
+    "sse": "/sse",
+    "message": "/message",
+    "health": "/health",
+    "info": "/mcp/info"
+  },
+  "capabilities": ["tools"],
+  "authenticated": true
+}
+```
+
 ### Conexión MCP (SSE)
 
 ```bash
 POST http://localhost:3000/sse
 Content-Type: application/json
+X-API-Key: tu-api-key-aqui  # Opcional, si MCP_API_KEY está configurado
 
 # Establece conexión Server-Sent Events para comunicación MCP
 ```
@@ -313,20 +335,60 @@ Content-Type: application/json
 # Endpoint usado internamente por el transporte SSE
 ```
 
-## � Conectar desde Cliente
+## 🔌 Conectar desde Cliente
 
-Tu aplicación orquestadora debe usar el **SSE Client Transport**:
+### Opción 1: Cliente NestJS (Orquestador)
+
+**Recomendado para aplicaciones que necesitan múltiples MCPs:**
+
+```typescript
+// src/mcp/mcp.config.ts (NestJS)
+import { registerAs } from "@nestjs/config";
+
+export default registerAs("mcp", () => ({
+  servers: {
+    googleDrive: {
+      name: "google-drive-local",
+      transport: {
+        type: "sse",
+        // Desarrollo: http://localhost:3001/sse
+        // Producción Docker: http://mcp-drive:3001/sse
+        url: process.env.MCP_DRIVE_URL || "http://localhost:3001/sse",
+      },
+      apiKey: process.env.MCP_DRIVE_API_KEY, // Header X-API-Key
+      timeout: 30000,
+    },
+  },
+}));
+
+// src/mcp/mcp.service.ts
+const transport = new SSEClientTransport(new URL(config.transport.url), {
+  headers: config.apiKey ? { "X-API-Key": config.apiKey } : undefined,
+});
+
+await client.connect(transport);
+```
+
+📚 **Ver guía completa**: [`docs/NESTJS-CLIENT.md`](./docs/NESTJS-CLIENT.md)
+
+### Opción 2: Cliente Genérico
+
+**Para aplicaciones simples o testing:**
 
 ```typescript
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 
 // Conectar al servidor MCP
-const transport = new SSEClientTransport(new URL("http://tu-vps:3001/sse"));
+const transport = new SSEClientTransport(new URL("http://tu-vps:3001/sse"), {
+  headers: {
+    "X-API-Key": "tu-api-key-aqui", // Opcional
+  },
+});
 
 const client = new Client(
   {
-    name: "orchestrator",
+    name: "my-app",
     version: "1.0.0",
   },
   {
@@ -348,12 +410,44 @@ const result = await client.callTool({
 console.log(result);
 ```
 
-## �🔒 Seguridad
+### Características del Cliente
+
+- ✅ **CORS habilitado**: Funciona desde cualquier dominio
+- ✅ **API Key via headers**: Envía `X-API-Key` en el header HTTP
+- ✅ **Conexiones persistentes**: SSE mantiene conexión abierta
+- ✅ **Multi-cliente**: Múltiples clientes pueden conectarse simultáneamente
+
+## 🔒 Seguridad
 
 - **Solo lectura**: Service Account con scope `drive.readonly`
-- **Autenticación opcional**: Soporta API key via `MCP_API_KEY`
+- **Autenticación opcional**: Soporta API key via header `X-API-Key`
+- **CORS configurado**: Permite conexiones desde clientes externos
 - **Validación robusta**: Esquemas Zod para todos los inputs
 - **Logging seguro**: No expone credenciales en logs
+
+### Autenticación con API Key
+
+**1. Configurar API key en servidor:**
+
+```env
+# .env
+MCP_API_KEY=tu_api_key_super_secreto_aqui
+```
+
+**2. Enviar desde cliente:**
+
+```typescript
+const transport = new SSEClientTransport(new URL("http://localhost:3001/sse"), {
+  headers: {
+    "X-API-Key": "tu_api_key_super_secreto_aqui",
+  },
+});
+```
+
+**3. Comportamiento:**
+
+- ✅ Si `MCP_API_KEY` NO está configurado → **Acceso libre** (desarrollo)
+- 🔒 Si `MCP_API_KEY` está configurado → **Requiere header** `X-API-Key`
 
 ### Seguridad en Producción (VPS)
 
@@ -388,11 +482,27 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
+        proxy_set_header X-API-Key $http_x_api_key;  # Pasar API key
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 86400;
     }
 }
+```
+
+### CORS en Producción
+
+Por defecto, CORS permite cualquier origen (`*`). Para producción, restringe dominios:
+
+```typescript
+// src/index.ts
+app.use((req, res, next) => {
+  res.setHeader(
+    "Access-Control-Allow-Origin",
+    "https://tu-app.com" // Solo tu dominio
+  );
+  // ... resto
+});
 ```
 
 ## 📊 Logging
@@ -553,8 +663,12 @@ PORT=3001 pnpm dev
 
 ### Error: "Unauthorized: Invalid API key"
 
-- Verifica que `MCP_API_KEY` esté configurado correctamente
-- El API key debe enviarse en `_meta.apiKey` del request
+- Verifica que `MCP_API_KEY` esté configurado en el servidor
+- El API key debe enviarse en el header `X-API-Key` (no en `_meta.apiKey`)
+- Formato correcto:
+  ```typescript
+  headers: { "X-API-Key": "tu-api-key" }
+  ```
 
 ### No se pueden leer archivos
 
