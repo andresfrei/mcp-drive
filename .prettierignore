@@ -30,3 +30,6 @@ package-lock.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Tests (mantener formato manual)
+tests/

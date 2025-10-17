@@ -6,8 +6,10 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-const API_KEY = "sk-1234567890abcdef1234567890abcdef";
-const BASE_URL = "http://localhost:3001";
+const BASE_URL = `http://${process.env.MCP_DRIVE_HOST || "localhost"}:${
+  process.env.MCP_DRIVE_PORT || 3001
+}`;
+const API_KEY = process.env.MCP_API_KEY || "";
 
 async function testMCPClient() {
   console.log("🔌 Conectando al MCP Server (StreamableHTTP)...\n");

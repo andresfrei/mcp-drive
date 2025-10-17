@@ -3,8 +3,8 @@
  * Ejecutar con: tsx test-drive.ts
  */
 
-import { drivesConfigLoader } from "./src/config/config-loader.js";
-import { googleDriveService } from "./src/services/drive-service.js";
+import { drivesConfigLoader } from "../src/config/config-loader.js";
+import { googleDriveService } from "../src/services/drive-service.js";
 
 async function testDrive() {
   console.log("🔧 Cargando configuración...");

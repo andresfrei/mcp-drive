@@ -12,7 +12,11 @@
     "format": "prettier --write \"src/**/*.{ts,json,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,json,md}\"",
     "check": "pnpm lint && pnpm format:check",
-    "test": "jest"
+    "test": "jest",
+    "test:client": "tsx tests/test-mcp-client.ts",
+    "test:recursive": "tsx tests/test-recursive.ts",
+    "test:drive": "tsx tests/test-drive.ts",
+    "test:all": "pnpm test:client && pnpm test:recursive"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.19.1",
