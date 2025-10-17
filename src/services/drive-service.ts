@@ -268,12 +268,16 @@ export class GoogleDriveService {
    * @param folderId - ID de la carpeta raíz desde donde iniciar
    * @param driveId - ID del Drive (opcional)
    * @param maxDepth - Profundidad máxima de recursión (default: 10)
+   * @param modifiedAfter - Filtrar archivos modificados después de esta fecha (opcional, formato RFC 3339)
+   * @param mimeType - Filtrar por tipo MIME específico (opcional, ej: 'application/vnd.google-apps.document')
    * @returns Array de archivos con información de profundidad
    */
   async listFilesRecursive(
     folderId: string,
     driveId?: string,
-    maxDepth: number = 10
+    maxDepth: number = 10,
+    modifiedAfter?: string,
+    mimeType?: string
   ): Promise<Array<DriveFile & { depth: number; path: string }>> {
     const targetDriveId =
       driveId || Object.keys(drivesConfigLoader.getConfig().drives)[0];
@@ -293,22 +297,72 @@ export class GoogleDriveService {
       }
 
       try {
-        // Listar contenido de la carpeta actual
-        const response = await drive.files.list({
-          q: `'${currentFolderId}' in parents and trashed = false`,
+        // Construir query con filtros opcionales
+        const queryParts = [
+          `'${currentFolderId}' in parents`,
+          "trashed = false",
+        ];
+
+        // Siempre explorar carpetas para continuar recursión
+        // pero aplicar filtros solo a archivos
+        const folderQuery = queryParts.join(" and ");
+        const fileQuery = [...queryParts];
+
+        if (modifiedAfter) {
+          fileQuery.push(`modifiedTime > '${modifiedAfter}'`);
+        }
+
+        if (mimeType) {
+          fileQuery.push(`mimeType = '${mimeType}'`);
+        }
+
+        // Primera query: obtener todas las carpetas (sin filtros)
+        const foldersResponse = await drive.files.list({
+          q: `${folderQuery} and mimeType = 'application/vnd.google-apps.folder'`,
           fields:
             "files(id, name, mimeType, modifiedTime, size, webViewLink, parents)",
-          pageSize: 1000, // Máximo permitido
-          orderBy: "folder,name", // Carpetas primero, luego por nombre
+          pageSize: 1000,
+          orderBy: "name",
         });
 
-        const files = response.data.files || [];
+        const folders = foldersResponse.data.files || [];
+
+        // Segunda query: obtener archivos con filtros aplicados
+        const filesResponse = await drive.files.list({
+          q: `${fileQuery.join(" and ")} and mimeType != 'application/vnd.google-apps.folder'`,
+          fields:
+            "files(id, name, mimeType, modifiedTime, size, webViewLink, parents)",
+          pageSize: 1000,
+          orderBy: "modifiedTime desc",
+        });
+
+        const files = filesResponse.data.files || [];
+
         logger.info(
-          `Found ${files.length} items in folder at depth ${currentDepth}`
+          `Depth ${currentDepth}: ${folders.length} folders, ${files.length} files (filters: ${modifiedAfter ? "date" : "none"}, ${mimeType ? "type" : "none"})`
         );
 
-        for (const file of files) {
+        // Procesar carpetas primero (para continuar recursión)
+        for (const folder of folders) {
           const item: DriveFile & { depth: number; path: string } = {
+            id: folder.id!,
+            name: folder.name!,
+            mimeType: folder.mimeType!,
+            modifiedTime: folder.modifiedTime!,
+            size: folder.size,
+            webViewLink: folder.webViewLink,
+            parents: folder.parents,
+            depth: currentDepth,
+            path: `${currentPath}/${folder.name}`,
+          };
+
+          results.push(item);
+          await traverse(folder.id!, currentDepth + 1, item.path);
+        }
+
+        // Procesar archivos (ya filtrados)
+        for (const file of files) {
+          results.push({
             id: file.id!,
             name: file.name!,
             mimeType: file.mimeType!,
@@ -318,14 +372,7 @@ export class GoogleDriveService {
             parents: file.parents,
             depth: currentDepth,
             path: `${currentPath}/${file.name}`,
-          };
-
-          results.push(item);
-
-          // Si es carpeta, recursión
-          if (file.mimeType === "application/vnd.google-apps.folder") {
-            await traverse(file.id!, currentDepth + 1, item.path);
-          }
+          });
         }
       } catch (error) {
         logger.error("Error traversing folder", {
@@ -341,7 +388,7 @@ export class GoogleDriveService {
     await traverse(folderId, 0, "");
 
     logger.info(
-      `Recursive listing completed: ${results.length} total items found`
+      `Recursive listing completed: ${results.length} total items (filters: ${modifiedAfter ? `date > ${modifiedAfter}` : "none"}, ${mimeType ? `type = ${mimeType}` : "none"})`
     );
     return results;
   }
