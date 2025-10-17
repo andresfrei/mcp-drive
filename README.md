@@ -297,41 +297,47 @@ Busca archivos por nombre en un Drive específico.
 
 #### `list_files_recursive` 🆕
 
-Lista recursivamente todos los archivos y subcarpetas dentro de una carpeta, incluyendo información de profundidad y ruta completa.
+Lista recursivamente todos los archivos y subcarpetas dentro de una carpeta con **filtros opcionales por fecha y tipo**, ideal para escaneos diarios de documentos modificados.
 
 **Parámetros**:
 
 - `folderId` (string, requerido): ID de la carpeta raíz desde donde iniciar
 - `driveId` (string, opcional): ID del Drive (usa el primero si se omite)
 - `maxDepth` (number, opcional): Profundidad máxima de recursión (default: 10)
+- `modifiedAfter` (string, opcional): Filtrar archivos modificados después de esta fecha (formato RFC 3339: `2024-10-17T08:00:00` o `2024-10-17T08:00:00Z` para UTC)
+- `mimeType` (string, opcional): Filtrar por tipo MIME específico (ej: `application/vnd.google-apps.document` para Google Docs, `application/pdf` para PDFs)
 
 **Respuesta**:
 
 ```json
 {
-  "totalItems": 166,
+  "totalItems": 42,
+  "filters": {
+    "modifiedAfter": "2024-10-17T08:00:00",
+    "mimeType": "application/vnd.google-apps.document"
+  },
   "items": [
     {
       "id": "1abc...",
-      "name": "CONTABILIDAD",
-      "mimeType": "application/vnd.google-apps.folder",
-      "modifiedTime": "2024-10-16T10:30:00Z",
-      "size": "0",
+      "name": "Reporte Mensual.docx",
+      "mimeType": "application/vnd.google-apps.document",
+      "modifiedTime": "2024-10-17T10:30:00Z",
+      "size": "12345",
       "webViewLink": "https://drive.google.com/...",
       "parents": ["0BwwA4oUTeiV1TGRPeTVjaWRDY1E"],
       "depth": 0,
-      "path": "/COMNET/1 - CONTABILIDAD"
+      "path": "/CONTABILIDAD/Reporte Mensual.docx"
     },
     {
       "id": "2def...",
-      "name": "Reporte.pdf",
-      "mimeType": "application/pdf",
-      "modifiedTime": "2024-10-15T14:20:00Z",
+      "name": "Presupuesto.docx",
+      "mimeType": "application/vnd.google-apps.document",
+      "modifiedTime": "2024-10-17T14:20:00Z",
       "size": "470883",
       "webViewLink": "https://drive.google.com/...",
       "parents": ["1abc..."],
       "depth": 2,
-      "path": "/COMNET/1 - CONTABILIDAD/DOCUMENTOS/Reporte.pdf"
+      "path": "/CONTABILIDAD/DOCUMENTOS/Presupuesto.docx"
     }
   ]
 }
@@ -339,13 +345,31 @@ Lista recursivamente todos los archivos y subcarpetas dentro de una carpeta, inc
 
 **Características**:
 
-- ✅ Recorre toda la estructura jerárquica (DFS - Depth-First Search)
-- ✅ Incluye campo `depth` (nivel de anidación, 0 = raíz)
-- ✅ Incluye campo `path` (ruta completa desde carpeta inicial)
-- ✅ Detecta automáticamente carpetas y archivos
-- ✅ Respeta límite `maxDepth` para prevenir recursión infinita
-- ✅ Ordena resultados: carpetas primero, luego por nombre
-- ✅ Límite de 1000 items por nivel (máximo de Google Drive API)
+- ✅ **Filtros opcionales**: Por fecha de modificación y tipo MIME
+- ✅ **Exploración completa**: Las carpetas siempre se recorren, filtros aplican solo a archivos
+- ✅ **Búsqueda recursiva**: DFS (Depth-First Search) en toda la jerarquía
+- ✅ **Metadatos completos**: ID, nombre, ruta completa, fecha, tipo, tamaño
+- ✅ **Campo `depth`**: Nivel de anidación (0 = raíz)
+- ✅ **Campo `path`**: Ruta completa desde carpeta inicial
+- ✅ **Protección**: Límite `maxDepth` previene recursión infinita
+- ✅ **Optimizado**: Doble query para carpetas + archivos filtrados
+- ✅ **Google Drive API**: Límite de 1000 items por nivel
+
+**Caso de uso típico** (escaneo diario):
+
+```typescript
+// Obtener todos los Google Docs modificados hoy después de las 8 AM
+const result = await client.callTool({
+  name: "list_files_recursive",
+  arguments: {
+    folderId: "carpeta-raiz-id",
+    modifiedAfter: "2024-10-17T08:00:00",
+    mimeType: "application/vnd.google-apps.document",
+    maxDepth: 5,
+  },
+});
+// Resultado: Solo Docs modificados hoy, con rutas completas para procesamiento LLM
+```
 
 ## 🌐 Endpoints HTTP
 
