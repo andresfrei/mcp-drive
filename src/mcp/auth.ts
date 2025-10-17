@@ -27,6 +27,13 @@ export function validateApiKey(requestApiKey?: string): boolean {
     return true;
   }
 
+  // Debug: log received vs expected
+  logger.info("Auth validation", {
+    receivedKey: requestApiKey ? `${requestApiKey.substring(0, 10)}...` : "NONE",
+    expectedKey: `${MCP_API_KEY.substring(0, 10)}...`,
+    match: requestApiKey === MCP_API_KEY
+  });
+
   // Validar que el API key coincida
   if (!requestApiKey || requestApiKey !== MCP_API_KEY) {
     logger.warn("Invalid or missing API key");
