@@ -12,8 +12,8 @@
 
 import fs from "fs";
 import path from "path";
-import { logger } from "../utils/logger.js";
-import { DrivesConfig, DrivesConfigSchema } from "./types.js";
+import { logger } from "@/utils/logger.js";
+import { DrivesConfig, DrivesConfigSchema } from "@/config/types.js";
 
 /** Ruta del archivo de configuración (configurable via variable de entorno) */
 const CONFIG_PATH = process.env.DRIVES_CONFIG_PATH || "./drives-config.json";

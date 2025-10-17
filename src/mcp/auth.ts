@@ -5,7 +5,7 @@
  * Si no hay API key configurado, permite acceso sin autenticación.
  */
 
-import { logger } from "../utils/logger.js";
+import { logger } from "@/utils/logger.js";
 
 /** API key opcional para autenticación de requests MCP */
 const MCP_API_KEY = process.env.MCP_API_KEY;

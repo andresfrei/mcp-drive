@@ -1,0 +1,9 @@
+{
+  "rules": {
+    "typescript/no-explicit-any": "allow",
+    "typescript/no-unused-vars": "warn",
+    "eslint/no-console": "off",
+    "eslint/no-debugger": "warn"
+  },
+  "ignore": ["node_modules", "dist", "build", "*.config.js", "*.config.ts"]
+}

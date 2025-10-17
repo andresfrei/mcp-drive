@@ -9,10 +9,10 @@
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import "dotenv/config";
 import express from "express";
-import { drivesConfigLoader } from "./config/config-loader.js";
-import { validateApiKey } from "./mcp/auth.js";
-import { createMCPServer } from "./mcp/server.js";
-import { logger } from "./utils/logger.js";
+import { drivesConfigLoader } from "@/config/config-loader.js";
+import { validateApiKey } from "@/mcp/auth.js";
+import { createMCPServer } from "@/mcp/server.js";
+import { logger } from "@/utils/logger.js";
 
 // ============================================================================
 // Configuración del servidor
@@ -60,7 +60,10 @@ async function main() {
 
     app.use((req, res, next) => {
       res.setHeader("Access-Control-Allow-Origin", "*"); // Ajustar en producción
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET, POST, DELETE, OPTIONS"
+      );
       res.setHeader(
         "Access-Control-Allow-Headers",
         "Content-Type, Authorization, Mcp-Session-Id"

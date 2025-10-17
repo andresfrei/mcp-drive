@@ -1,0 +1,32 @@
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Logs
+*.log
+combined.log
+error.log
+
+# Environment
+.env
+.env.*
+
+# Config files
+drives-config.json
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

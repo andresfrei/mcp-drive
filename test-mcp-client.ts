@@ -57,21 +57,56 @@ async function testMCPClient() {
     }
     console.log();
 
-    // Probar herramienta list_files
-    console.log("📤 Ejecutando: list_files (primeros 5 archivos)\n");
+    // Probar herramienta list_files (raíz)
+    console.log("📤 Ejecutando: list_files (carpetas raíz)\n");
     const filesResult = await client.callTool({
       name: "list_files",
-      arguments: { pageSize: 5 },
+      arguments: { pageSize: 10 },
     });
 
-    console.log("📥 Resultado list_files:");
+    console.log("📥 Carpetas en raíz:");
+    let comnetFolderId: string | undefined;
     if (filesResult.content && filesResult.content.length > 0) {
       const parsed = JSON.parse(filesResult.content[0].text as string);
-      console.log(`Total archivos: ${parsed.totalFiles}`);
-      console.log("\nPrimeros archivos:");
-      parsed.files.slice(0, 3).forEach((file: any, idx: number) => {
-        console.log(`  ${idx + 1}. ${file.name} (${file.mimeType})`);
+      console.log(`Total archivos: ${parsed.totalFiles}\n`);
+      parsed.files.forEach((file: any, idx: number) => {
+        console.log(`  ${idx + 1}. ${file.name}`);
+        console.log(`     📁 ID: ${file.id}`);
+        console.log(`     📄 Tipo: ${file.mimeType}`);
+        if (file.name === "COMNET") {
+          comnetFolderId = file.id;
+        }
       });
+    }
+    console.log();
+
+    // Listar contenido de la carpeta COMNET
+    if (comnetFolderId) {
+      console.log("📤 Ejecutando: list_files (contenido carpeta COMNET)\n");
+      const comnetResult = await client.callTool({
+        name: "list_files",
+        arguments: { 
+          folderId: comnetFolderId,
+          pageSize: 50 
+        },
+      });
+
+      console.log("📥 Contenido de carpeta COMNET:");
+      if (comnetResult.content && comnetResult.content.length > 0) {
+        const parsed = JSON.parse(comnetResult.content[0].text as string);
+        console.log(`Total elementos: ${parsed.totalFiles}\n`);
+        parsed.files.forEach((file: any, idx: number) => {
+          const isFolder = file.mimeType === "application/vnd.google-apps.folder";
+          const icon = isFolder ? "📁" : "📄";
+          console.log(`  ${icon} ${idx + 1}. ${file.name}`);
+          console.log(`     ID: ${file.id}`);
+          console.log(`     Tipo: ${file.mimeType}`);
+          if (file.size) console.log(`     Tamaño: ${file.size} bytes`);
+          console.log();
+        });
+      }
+    } else {
+      console.log("⚠️  No se encontró la carpeta COMNET");
     }
     console.log();
 

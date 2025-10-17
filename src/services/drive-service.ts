@@ -13,14 +13,14 @@
 import { GoogleAuth } from "google-auth-library";
 import { google } from "googleapis";
 import path from "path";
-import { drivesConfigLoader } from "../config/config-loader.js";
+import { drivesConfigLoader } from "@/config/config-loader.js";
 import {
   DriveFile,
   FileContent,
   ListFilesParams,
   SUPPORTED_MIME_TYPES,
-} from "../config/types.js";
-import { logger } from "../utils/logger.js";
+} from "@/config/types.js";
+import { logger } from "@/utils/logger.js";
 
 /**
  * Clase principal del servicio de Google Drive
@@ -257,6 +257,93 @@ export class GoogleDriveService {
       logger.error("Error searching files", { driveId, query, error });
       throw error;
     }
+  }
+
+  /**
+   * Lista recursivamente todos los archivos y carpetas dentro de una carpeta
+   *
+   * Implementa búsqueda en profundidad (DFS) para recorrer toda la estructura
+   * Retorna archivos y carpetas con información de su ruta (depth/path)
+   *
+   * @param folderId - ID de la carpeta raíz desde donde iniciar
+   * @param driveId - ID del Drive (opcional)
+   * @param maxDepth - Profundidad máxima de recursión (default: 10)
+   * @returns Array de archivos con información de profundidad
+   */
+  async listFilesRecursive(
+    folderId: string,
+    driveId?: string,
+    maxDepth: number = 10
+  ): Promise<Array<DriveFile & { depth: number; path: string }>> {
+    const targetDriveId =
+      driveId || Object.keys(drivesConfigLoader.getConfig().drives)[0];
+    const drive = await this.getDriveClient(targetDriveId);
+
+    const results: Array<DriveFile & { depth: number; path: string }> = [];
+
+    // Función recursiva interna
+    const traverse = async (
+      currentFolderId: string,
+      currentDepth: number,
+      currentPath: string
+    ) => {
+      if (currentDepth > maxDepth) {
+        logger.warn(`Max depth ${maxDepth} reached at path: ${currentPath}`);
+        return;
+      }
+
+      try {
+        // Listar contenido de la carpeta actual
+        const response = await drive.files.list({
+          q: `'${currentFolderId}' in parents and trashed = false`,
+          fields:
+            "files(id, name, mimeType, modifiedTime, size, webViewLink, parents)",
+          pageSize: 1000, // Máximo permitido
+          orderBy: "folder,name", // Carpetas primero, luego por nombre
+        });
+
+        const files = response.data.files || [];
+        logger.info(
+          `Found ${files.length} items in folder at depth ${currentDepth}`
+        );
+
+        for (const file of files) {
+          const item: DriveFile & { depth: number; path: string } = {
+            id: file.id!,
+            name: file.name!,
+            mimeType: file.mimeType!,
+            modifiedTime: file.modifiedTime!,
+            size: file.size,
+            webViewLink: file.webViewLink,
+            parents: file.parents,
+            depth: currentDepth,
+            path: `${currentPath}/${file.name}`,
+          };
+
+          results.push(item);
+
+          // Si es carpeta, recursión
+          if (file.mimeType === "application/vnd.google-apps.folder") {
+            await traverse(file.id!, currentDepth + 1, item.path);
+          }
+        }
+      } catch (error) {
+        logger.error("Error traversing folder", {
+          folderId: currentFolderId,
+          depth: currentDepth,
+          error,
+        });
+        throw error;
+      }
+    };
+
+    // Iniciar traversal desde carpeta raíz
+    await traverse(folderId, 0, "");
+
+    logger.info(
+      `Recursive listing completed: ${results.length} total items found`
+    );
+    return results;
   }
 }
 
