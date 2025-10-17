@@ -1,6 +1,6 @@
 {
   "name": "@agent-mcp/mcp-google-drive-server",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "MCP Server for Google Drive multi-account access",
   "main": "dist/index.js",
   "scripts": {
@@ -11,7 +11,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@modelcontextprotocol/sdk": "^1.19.1",
     "dotenv": "^16.4.1",
     "express": "^5.1.0",
     "google-auth-library": "^9.6.3",

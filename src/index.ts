@@ -1,12 +1,12 @@
 /**
- * Punto de entrada del servidor MCP para Google Drive
+ * Punto de entrada del servidor MCP para Google Drive (Modernizado)
  *
- * Inicializa y ejecuta el servidor MCP con transporte HTTP/SSE,
- * permitiendo la gestión de múltiples cuentas de Google Drive
- * y operaciones de lectura de archivos.
+ * Servidor MCP con transporte StreamableHTTP (stateless),
+ * autenticación por middleware, y soporte para múltiples cuentas
+ * de Google Drive.
  */
 
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import "dotenv/config";
 import express from "express";
 import { drivesConfigLoader } from "./config/config-loader.js";
@@ -26,37 +26,46 @@ const HOST = process.env.MCP_DRIVE_HOST || "0.0.0.0";
 // ============================================================================
 
 /**
- * Función principal: inicia el servidor MCP sobre HTTP/SSE
+ * Función principal: inicia el servidor MCP sobre HTTP/StreamableHTTP
  *
  * Proceso:
- * 1. Carga configuración de Drives
- * 2. Crea servidor MCP con handlers registrados
- * 3. Configura servidor HTTP con endpoint SSE
- * 4. Inicia servidor en puerto configurado
+ * 1. Carga configuración de drives desde drives-config.json
+ * 2. Crea servidor Express con CORS
+ * 3. Middleware de autenticación por API key
+ * 4. Endpoint /mcp con StreamableHTTP (stateless)
+ * 5. Healthcheck endpoints
  */
 async function main() {
   try {
-    // Cargar configuración inicial (crea archivo vacío si no existe)
-    drivesConfigLoader.load();
+    // Cargar configuración de drives
+    const config = drivesConfigLoader.load();
+    const driveCount = Object.keys(config.drives).length;
 
-    logger.info("🚀 Google Drive MCP Server starting...");
-    logger.info("📂 Ready to manage drives and access files");
-    logger.info(
-      "💡 Use 'add_drive' tool to configure your first Google Drive account"
-    );
+    logger.info(`Loaded ${driveCount} drive(s) from configuration`);
+
+    if (driveCount === 0) {
+      logger.warn("No drives configured yet!");
+      logger.info(
+        "💡 Use 'add_drive' tool to configure your first Google Drive account"
+      );
+    }
 
     // Crear aplicación Express
     const app = express();
+    app.use(express.json());
 
-    // Configurar CORS para cliente NestJS
+    // ============================================================================
+    // CORS Configuration
+    // ============================================================================
+
     app.use((req, res, next) => {
       res.setHeader("Access-Control-Allow-Origin", "*"); // Ajustar en producción
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
       res.setHeader(
         "Access-Control-Allow-Headers",
-        "Content-Type, X-API-Key, Authorization"
+        "Content-Type, Authorization, Mcp-Session-Id"
       );
-      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 
       if (req.method === "OPTIONS") {
         return res.status(200).end();
@@ -64,71 +73,116 @@ async function main() {
       next();
     });
 
-    app.use(express.json());
+    // ============================================================================
+    // Authentication Middleware
+    // ============================================================================
 
-    // Health check endpoint
+    app.use("/mcp", (req, res, next) => {
+      // Soportar autenticación por header Authorization o query parameter apiKey
+      const authHeader = req.headers.authorization?.replace("Bearer ", "");
+      const queryKey = req.query.apiKey as string | undefined;
+      const apiKey = authHeader || queryKey;
+
+      if (!validateApiKey(apiKey)) {
+        logger.warn("Unauthorized MCP request", {
+          ip: req.ip,
+          path: req.path,
+        });
+        return res.status(401).json({
+          jsonrpc: "2.0",
+          error: {
+            code: -32000,
+            message: "Unauthorized: Invalid or missing API key",
+          },
+          id: null,
+        });
+      }
+
+      next();
+    });
+
+    // ============================================================================
+    // Health Check Endpoints
+    // ============================================================================
+
     app.get("/health", (_req, res) => {
       res.json({ status: "healthy", timestamp: new Date().toISOString() });
     });
 
-    // MCP server info endpoint (útil para debugging)
-    app.get("/mcp/info", (_req, res) => {
+    app.get("/info", (_req, res) => {
       res.json({
         name: "google-drive-mcp",
-        version: "1.0.0",
-        transport: "sse",
+        version: "2.0.0",
+        transport: "streamable-http",
         endpoints: {
-          sse: "/sse",
-          message: "/message",
+          mcp: "/mcp",
           health: "/health",
-          info: "/mcp/info",
+          info: "/info",
         },
         capabilities: ["tools"],
         authenticated: !!process.env.MCP_API_KEY,
+        drivesConfigured: driveCount,
       });
     });
 
-    // Endpoint SSE para MCP
-    app.post("/sse", async (req, res) => {
-      logger.info("New SSE connection attempt");
+    // ============================================================================
+    // MCP Endpoint - StreamableHTTP (Stateless)
+    // ============================================================================
 
-      // Extraer API key del header Authorization o X-API-Key
-      const authHeader = req.headers.authorization?.replace("Bearer ", "");
-      const apiKeyHeader = req.headers["x-api-key"] as string | undefined;
-      const apiKey = authHeader || apiKeyHeader;
+    app.post("/mcp", async (req, res) => {
+      try {
+        // Crear nuevo transporte para cada request (stateless mode)
+        // Evita colisiones de request IDs entre diferentes clientes
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined, // Stateless
+          enableJsonResponse: true, // Soporte JSON directo
+        });
 
-      // Validar API key antes de establecer conexión
-      if (!validateApiKey(apiKey)) {
-        logger.warn("Unauthorized SSE connection attempt");
-        return res.status(401).json({ error: "Unauthorized: Invalid API key" });
+        // Cleanup al cerrar conexión
+        res.on("close", () => {
+          transport.close();
+        });
+
+        // Crear servidor MCP y conectar transporte
+        const server = createMCPServer();
+        await server.connect(transport);
+
+        // Procesar request
+        await transport.handleRequest(req, res, req.body);
+      } catch (error) {
+        logger.error("Error handling MCP request", { error });
+
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: "2.0",
+            error: {
+              code: -32603,
+              message: "Internal server error",
+            },
+            id: null,
+          });
+        }
       }
-
-      logger.info("SSE connection established (authenticated)");
-
-      // Crear servidor MCP para esta conexión
-      const server = createMCPServer();
-
-      // Configurar transporte SSE
-      const transport = new SSEServerTransport("/message", res);
-      await server.connect(transport);
-
-      // Manejar cierre de conexión
-      req.on("close", () => {
-        logger.info("SSE connection closed");
-      });
     });
 
-    // Endpoint para mensajes del cliente
-    app.post("/message", async (req, res) => {
-      // Este endpoint es manejado por el transporte SSE
-      res.status(200).end();
-    });
-
+    // ============================================================================
     // Iniciar servidor HTTP
-    app.listen(PORT, HOST, () => {
+    // ============================================================================
+
+    const server = app.listen(PORT, HOST, () => {
       logger.info(`✅ MCP Server running on http://${HOST}:${PORT}`);
-      logger.info(`📡 SSE endpoint: POST http://${HOST}:${PORT}/sse`);
+      logger.info(`📡 MCP endpoint: POST http://${HOST}:${PORT}/mcp`);
       logger.info(`🏥 Health check: GET http://${HOST}:${PORT}/health`);
+      logger.info(`ℹ️  Server info: GET http://${HOST}:${PORT}/info`);
+    });
+
+    server.on("error", (error: any) => {
+      if (error.code === "EADDRINUSE") {
+        logger.error(`Port ${PORT} is already in use`);
+      } else {
+        logger.error("Server error", { error });
+      }
+      process.exit(1);
     });
   } catch (error) {
     logger.error("Failed to start server", { error });

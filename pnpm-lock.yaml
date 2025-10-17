@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@modelcontextprotocol/sdk':
-        specifier: ^1.0.4
+        specifier: ^1.19.1
         version: 1.19.1
       dotenv:
         specifier: ^16.4.1
