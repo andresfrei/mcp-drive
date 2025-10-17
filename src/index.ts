@@ -10,6 +10,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import "dotenv/config";
 import express from "express";
 import { drivesConfigLoader } from "./config/config-loader.js";
+import { validateApiKey } from "./mcp/auth.js";
 import { createMCPServer } from "./mcp/server.js";
 import { logger } from "./utils/logger.js";
 
@@ -51,7 +52,10 @@ async function main() {
     app.use((req, res, next) => {
       res.setHeader("Access-Control-Allow-Origin", "*"); // Ajustar en producción
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-API-Key");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, X-API-Key, Authorization"
+      );
       res.setHeader("Access-Control-Allow-Credentials", "true");
 
       if (req.method === "OPTIONS") {
@@ -86,13 +90,23 @@ async function main() {
 
     // Endpoint SSE para MCP
     app.post("/sse", async (req, res) => {
-      logger.info("New SSE connection established");
+      logger.info("New SSE connection attempt");
 
-      // Extraer API key del header (si existe)
-      const apiKey = req.headers["x-api-key"] as string | undefined;
+      // Extraer API key del header Authorization o X-API-Key
+      const authHeader = req.headers.authorization?.replace("Bearer ", "");
+      const apiKeyHeader = req.headers["x-api-key"] as string | undefined;
+      const apiKey = authHeader || apiKeyHeader;
 
-      // Crear servidor MCP para esta conexión con contexto de auth
-      const server = createMCPServer(apiKey);
+      // Validar API key antes de establecer conexión
+      if (!validateApiKey(apiKey)) {
+        logger.warn("Unauthorized SSE connection attempt");
+        return res.status(401).json({ error: "Unauthorized: Invalid API key" });
+      }
+
+      logger.info("SSE connection established (authenticated)");
+
+      // Crear servidor MCP para esta conexión
+      const server = createMCPServer();
 
       // Configurar transporte SSE
       const transport = new SSEServerTransport("/message", res);

@@ -10,7 +10,6 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { validateApiKey } from "./auth.js";
 import { mcpTools } from "./tools-definition.js";
 import { executeToolHandler } from "./tools-handler.js";
 
@@ -19,12 +18,11 @@ import { executeToolHandler } from "./tools-handler.js";
  *
  * Registra handlers para:
  * - Listado de herramientas disponibles
- * - Ejecución de herramientas con autenticación
+ * - Ejecución de herramientas (autenticación ya validada en /sse)
  *
- * @param apiKey - API key opcional extraído del header HTTP
  * @returns Servidor MCP configurado y listo para conectar
  */
-export function createMCPServer(apiKey?: string): Server {
+export function createMCPServer(): Server {
   // Crear instancia del servidor
   const server = new Server(
     {
@@ -53,12 +51,8 @@ export function createMCPServer(apiKey?: string): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
-    // Validar autenticación usando el API key del contexto HTTP
-    if (!validateApiKey(apiKey)) {
-      throw new Error("Unauthorized: Invalid API key");
-    }
-
-    // Ejecutar herramienta y retornar resultado
+    // La validación ya se hizo en el endpoint /sse
+    // Aquí solo ejecutamos la herramienta
     return executeToolHandler(name, args);
   });
 
