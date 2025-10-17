@@ -1,20 +1,24 @@
 # Google Drive MCP Server
 
-Servidor MCP (Model Context Protocol) para gestión de múltiples cuentas de Google Drive con acceso de solo lectura.
+Servidor MCP (Model Context Protocol) modernizado para gestión de múltiples cuentas de Google Drive con acceso de solo lectura.
 
 ## 🎯 Características
 
-- ✅ **Servidor HTTP/SSE**: Expone API REST con Server-Sent Events para conexiones MCP
-- ✅ **Multi-cliente**: Múltiples clientes pueden conectarse simultáneamente
+- ✅ **StreamableHTTP Transport**: Arquitectura stateless HTTP moderna (reemplaza SSE deprecado)
+- ✅ **MCP SDK v1.19.1**: Usando McpServer high-level API con validación automática
+- ✅ **Multi-cliente**: Múltiples clientes pueden conectarse simultáneamente (stateless)
 - ✅ **Puerto configurable**: Ideal para VPS con múltiples servicios MCP
 - ✅ **Multi-cuenta**: Gestiona múltiples cuentas de Google Drive simultáneamente
-- ✅ **Autenticación segura**: Service Account con permisos de solo lectura
-- ✅ **Operaciones de archivos**: Listar, buscar y obtener contenido
+- ✅ **7 Herramientas MCP**: Incluyendo listado recursivo de carpetas
+- ✅ **Arquitectura modular**: Tools organizadas en módulos independientes
+- ✅ **Autenticación segura**: Query parameter o header API key
+- ✅ **Operaciones de archivos**: Listar, buscar, recursivo y obtener contenido
 - ✅ **Soporta Google Workspace**: Docs, Sheets, Slides
 - ✅ **Archivos de texto**: TXT, Markdown
 - ✅ **Logging estructurado**: Winston con múltiples niveles
-- ✅ **Validación robusta**: Zod schemas para configuración
-- ✅ **API key opcional**: Autenticación de requests MCP
+- ✅ **Validación robusta**: Zod schemas en todas las herramientas
+- ✅ **Path alias @/**: Imports absolutos desde `src/`
+- ✅ **Oxlint + Prettier**: Linting ultrarrápido y formato consistente
 - ✅ **Docker-ready**: Configuración lista para deployment en VPS
 
 ## 📁 Estructura del Proyecto
@@ -26,18 +30,31 @@ src/
     types.ts            # Tipos y esquemas Zod
 
   services/
-    drive-service.ts    # Servicio de Google Drive API
+    drive-service.ts    # Servicio de Google Drive API (incluye recursivo)
 
   utils/
     logger.ts           # Sistema de logging con Winston
 
   mcp/
     auth.ts             # Autenticación de requests MCP
-    server.ts           # Configuración del servidor MCP
-    tools-definition.ts # Definición de herramientas MCP
-    tools-handler.ts    # Lógica de ejecución de herramientas
+    server.ts           # Configuración del servidor MCP (33 líneas)
+    tools/              # 🆕 Herramientas modularizadas
+      index.ts          # Exportador central
+      list-drives.ts    # Listar cuentas configuradas
+      add-drive.ts      # Agregar cuenta
+      remove-drive.ts   # Eliminar cuenta
+      list-files.ts     # Listar archivos con filtros
+      list-files-recursive.ts  # 🆕 Listado recursivo
+      get-file-content.ts      # Obtener contenido
+      search-files.ts          # Buscar por nombre
 
   index.ts              # Entry point del servidor
+
+tests/
+  test-mcp-client.ts    # Test de conexión general
+  test-recursive.ts     # Test de listado recursivo
+  test-drive.ts         # Test de API de Drive
+  README.md             # Documentación de tests
 ```
 
 ## 🚀 Instalación y Deployment
@@ -46,8 +63,8 @@ src/
 
 ```bash
 # Clonar repositorio
-git clone https://github.com/andresfrei/mcp-drive.git
-cd mcp-drive
+git clone https://github.com/andresfrei/mcp-google-drive-server.git
+cd mcp-google-drive-server
 
 # Instalar dependencias
 pnpm install
@@ -59,7 +76,7 @@ nano .env
 # Desarrollo (con hot reload)
 pnpm dev
 
-# El servidor estará disponible en http://localhost:3000
+# El servidor estará disponible en http://localhost:3001
 ```
 
 ### Producción con Docker
@@ -124,8 +141,8 @@ El servidor usa `drives-config.json` para gestionar cuentas:
 
 ```env
 # Configuración del servidor HTTP
-PORT=3000                    # Puerto del servidor (default: 3000)
-HOST=0.0.0.0                # Host de escucha (0.0.0.0 para Docker)
+MCP_DRIVE_PORT=3001          # Puerto del servidor (default: 3001)
+MCP_DRIVE_HOST=0.0.0.0       # Host de escucha (0.0.0.0 para Docker)
 
 # Configuración de Drives
 DRIVES_CONFIG_PATH=./drives-config.json
@@ -135,12 +152,11 @@ LOG_LEVEL=info
 
 # API key para autenticación de requests MCP (opcional)
 MCP_API_KEY=tu_api_key_seguro
-
-# Para docker-compose: puerto externo
-MCP_DRIVE_PORT=3000
 ```
 
 ## 🛠️ Herramientas MCP
+
+El servidor expone **7 herramientas** vía protocolo MCP:
 
 ### Gestión de Drives
 
@@ -266,18 +282,70 @@ Busca archivos por nombre en un Drive específico.
 
 ```json
 {
-  "query": "presupuesto",
-  "totalResults": 3,
+  "totalFiles": 3,
   "files": [
     {
       "id": "1abc...",
       "name": "Presupuesto 2024.xlsx",
       "mimeType": "application/vnd.google-apps.spreadsheet",
-      "modifiedTime": "2024-10-16T10:30:00Z"
+      "modifiedTime": "2024-10-16T10:30:00Z",
+      "webViewLink": "https://drive.google.com/..."
     }
   ]
 }
 ```
+
+#### `list_files_recursive` 🆕
+
+Lista recursivamente todos los archivos y subcarpetas dentro de una carpeta, incluyendo información de profundidad y ruta completa.
+
+**Parámetros**:
+
+- `folderId` (string, requerido): ID de la carpeta raíz desde donde iniciar
+- `driveId` (string, opcional): ID del Drive (usa el primero si se omite)
+- `maxDepth` (number, opcional): Profundidad máxima de recursión (default: 10)
+
+**Respuesta**:
+
+```json
+{
+  "totalItems": 166,
+  "items": [
+    {
+      "id": "1abc...",
+      "name": "CONTABILIDAD",
+      "mimeType": "application/vnd.google-apps.folder",
+      "modifiedTime": "2024-10-16T10:30:00Z",
+      "size": "0",
+      "webViewLink": "https://drive.google.com/...",
+      "parents": ["0BwwA4oUTeiV1TGRPeTVjaWRDY1E"],
+      "depth": 0,
+      "path": "/COMNET/1 - CONTABILIDAD"
+    },
+    {
+      "id": "2def...",
+      "name": "Reporte.pdf",
+      "mimeType": "application/pdf",
+      "modifiedTime": "2024-10-15T14:20:00Z",
+      "size": "470883",
+      "webViewLink": "https://drive.google.com/...",
+      "parents": ["1abc..."],
+      "depth": 2,
+      "path": "/COMNET/1 - CONTABILIDAD/DOCUMENTOS/Reporte.pdf"
+    }
+  ]
+}
+```
+
+**Características**:
+
+- ✅ Recorre toda la estructura jerárquica (DFS - Depth-First Search)
+- ✅ Incluye campo `depth` (nivel de anidación, 0 = raíz)
+- ✅ Incluye campo `path` (ruta completa desde carpeta inicial)
+- ✅ Detecta automáticamente carpetas y archivos
+- ✅ Respeta límite `maxDepth` para prevenir recursión infinita
+- ✅ Ordena resultados: carpetas primero, luego por nombre
+- ✅ Límite de 1000 items por nivel (máximo de Google Drive API)
 
 ## 🌐 Endpoints HTTP
 
@@ -286,7 +354,7 @@ El servidor expone los siguientes endpoints:
 ### Health Check
 
 ```bash
-GET http://localhost:3000/health
+GET http://localhost:3001/health
 
 # Respuesta
 {
@@ -295,96 +363,31 @@ GET http://localhost:3000/health
 }
 ```
 
-### MCP Server Info (Debugging)
+### Conexión MCP (StreamableHTTP)
 
 ```bash
-GET http://localhost:3000/mcp/info
+GET http://localhost:3001/mcp?apiKey=tu-api-key-aqui
 
-# Respuesta
-{
-  "name": "google-drive-mcp",
-  "version": "1.0.0",
-  "transport": "sse",
-  "endpoints": {
-    "sse": "/sse",
-    "message": "/message",
-    "health": "/health",
-    "info": "/mcp/info"
-  },
-  "capabilities": ["tools"],
-  "authenticated": true
-}
+# Establece conexión StreamableHTTP para comunicación MCP
+# Autenticación vía query parameter (recomendado) o header X-API-Key
 ```
 
-### Conexión MCP (SSE)
-
-```bash
-POST http://localhost:3000/sse
-Content-Type: application/json
-X-API-Key: tu-api-key-aqui  # Opcional, si MCP_API_KEY está configurado
-
-# Establece conexión Server-Sent Events para comunicación MCP
-```
-
-### Mensajes MCP
-
-```bash
-POST http://localhost:3000/message
-Content-Type: application/json
-
-# Endpoint usado internamente por el transporte SSE
-```
+**Nota sobre SSE**: El transporte SSE (Server-Sent Events) está deprecado en MCP SDK v1.19+. Use StreamableHTTP.
 
 ## 🔌 Conectar desde Cliente
 
-### Opción 1: Cliente NestJS (Orquestador)
+### Opción 1: StreamableHTTP (Recomendado) 🆕
 
-**Recomendado para aplicaciones que necesitan múltiples MCPs:**
-
-```typescript
-// src/mcp/mcp.config.ts (NestJS)
-import { registerAs } from "@nestjs/config";
-
-export default registerAs("mcp", () => ({
-  servers: {
-    googleDrive: {
-      name: "google-drive-local",
-      transport: {
-        type: "sse",
-        // Desarrollo: http://localhost:3001/sse
-        // Producción Docker: http://mcp-drive:3001/sse
-        url: process.env.MCP_DRIVE_URL || "http://localhost:3001/sse",
-      },
-      apiKey: process.env.MCP_DRIVE_API_KEY, // Header X-API-Key
-      timeout: 30000,
-    },
-  },
-}));
-
-// src/mcp/mcp.service.ts
-const transport = new SSEClientTransport(new URL(config.transport.url), {
-  headers: config.apiKey ? { "X-API-Key": config.apiKey } : undefined,
-});
-
-await client.connect(transport);
-```
-
-📚 **Ver guía completa**: [`docs/NESTJS-CLIENT.md`](./docs/NESTJS-CLIENT.md)
-
-### Opción 2: Cliente Genérico
-
-**Para aplicaciones simples o testing:**
+**Transport moderno stateless para cualquier aplicación:**
 
 ```typescript
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-// Conectar al servidor MCP
-const transport = new SSEClientTransport(new URL("http://tu-vps:3001/sse"), {
-  headers: {
-    "X-API-Key": "tu-api-key-aqui", // Opcional
-  },
-});
+// Conectar con autenticación por query parameter
+const transport = new StreamableHTTPClientTransport(
+  new URL("http://localhost:3001/mcp?apiKey=tu-api-key-aqui")
+);
 
 const client = new Client(
   {
@@ -398,8 +401,9 @@ const client = new Client(
 
 await client.connect(transport);
 
-// Listar herramientas disponibles
+// Listar herramientas disponibles (7 tools)
 const tools = await client.listTools();
+console.log(`Tools disponibles: ${tools.tools.length}`);
 
 // Ejecutar herramienta
 const result = await client.callTool({
@@ -408,14 +412,64 @@ const result = await client.callTool({
 });
 
 console.log(result);
+
+// Listar recursivamente una carpeta
+const recursiveResult = await client.callTool({
+  name: "list_files_recursive",
+  arguments: {
+    folderId: "1AdO2achPP4Kgz4AGmKw2C4wKF49Ce-KC",
+    driveId: "comnet-manuales",
+    maxDepth: 5,
+  },
+});
+
+await client.close();
 ```
+
+### Opción 2: Cliente NestJS (Orquestador)
+
+**Recomendado para aplicaciones que necesitan múltiples MCPs:**
+
+```typescript
+// src/mcp/mcp.config.ts (NestJS)
+import { registerAs } from "@nestjs/config";
+
+export default registerAs("mcp", () => ({
+  servers: {
+    googleDrive: {
+      name: "google-drive-local",
+      transport: {
+        type: "streamableHttp", // 🆕 Cambio de "sse" a "streamableHttp"
+        // Desarrollo: http://localhost:3001/mcp?apiKey=...
+        // Producción Docker: http://mcp-drive:3001/mcp?apiKey=...
+        url:
+          process.env.MCP_DRIVE_URL ||
+          `http://localhost:3001/mcp?apiKey=${process.env.MCP_DRIVE_API_KEY}`,
+      },
+      timeout: 30000,
+    },
+  },
+}));
+
+// src/mcp/mcp.service.ts
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
+const transport = new StreamableHTTPClientTransport(
+  new URL(config.transport.url)
+);
+
+await client.connect(transport);
+```
+
+📚 **Ver guía completa**: [`docs/NESTJS-CLIENT.md`](./docs/NESTJS-CLIENT.md)
 
 ### Características del Cliente
 
 - ✅ **CORS habilitado**: Funciona desde cualquier dominio
-- ✅ **API Key via headers**: Envía `X-API-Key` en el header HTTP
-- ✅ **Conexiones persistentes**: SSE mantiene conexión abierta
+- ✅ **API Key dual**: Via query parameter `?apiKey=...` (recomendado) o header `X-API-Key`
+- ✅ **Stateless**: No mantiene sesiones, ideal para Docker/Kubernetes
 - ✅ **Multi-cliente**: Múltiples clientes pueden conectarse simultáneamente
+- ✅ **Retry automático**: SDK maneja reconexiones
 
 ## 🔒 Seguridad
 
@@ -437,11 +491,20 @@ MCP_API_KEY=tu_api_key_super_secreto_aqui
 **2. Enviar desde cliente:**
 
 ```typescript
-const transport = new SSEClientTransport(new URL("http://localhost:3001/sse"), {
-  headers: {
-    "X-API-Key": "tu_api_key_super_secreto_aqui",
-  },
-});
+// Opción 1: Query parameter (recomendado para StreamableHTTP)
+const transport = new StreamableHTTPClientTransport(
+  new URL("http://localhost:3001/mcp?apiKey=tu_api_key_super_secreto_aqui")
+);
+
+// Opción 2: Header (alternativa)
+const transport = new StreamableHTTPClientTransport(
+  new URL("http://localhost:3001/mcp"),
+  {
+    headers: {
+      "X-API-Key": "tu_api_key_super_secreto_aqui",
+    },
+  }
+);
 ```
 
 **3. Comportamiento:**
@@ -571,18 +634,35 @@ docker run -d --name mcp-drive-work \
   mcp-drive-server
 ```
 
-## 🧪 Desarrollo
+## 🧪 Desarrollo y Testing
 
 ```bash
 # Desarrollo local con hot reload
 pnpm dev
-# Servidor en http://localhost:3000
+# Servidor en http://localhost:3001
+
+# Linting con oxlint (ultrarrápido)
+pnpm lint
+pnpm lint:fix
+
+# Formateo con Prettier
+pnpm format
+pnpm format:check
+
+# Verificación completa (lint + format)
+pnpm check
 
 # Build para producción
 pnpm build
 
 # Ejecutar versión compilada
 pnpm start
+
+# Tests
+pnpm test:client      # Test de conexión y tools básicas
+pnpm test:recursive   # Test de listado recursivo
+pnpm test:drive       # Test de Google Drive API
+pnpm test:all         # Ejecutar todos los tests
 
 # Ver logs de Docker
 docker-compose logs -f
@@ -594,11 +674,24 @@ docker-compose restart
 docker-compose up -d --build
 ```
 
+### Tests Disponibles
+
+El proyecto incluye 3 tests completos en la carpeta `tests/`:
+
+1. **test-mcp-client.ts**: Conexión general y herramientas básicas
+2. **test-recursive.ts**: Validación de listado recursivo (166 items en estructura COMNET)
+3. **test-drive.ts**: Pruebas directas con Google Drive API
+
+📚 **Ver documentación completa**: [`tests/README.md`](./tests/README.md)
+
 ## 📊 Monitoreo
 
 ```bash
 # Health check
-curl http://localhost:3000/health
+curl http://localhost:3001/health
+
+# Test de conexión MCP
+pnpm test:client
 
 # Logs en tiempo real
 docker-compose logs -f mcp-drive
@@ -609,6 +702,56 @@ docker stats mcp-drive
 # Inspeccionar contenedor
 docker inspect mcp-drive
 ```
+
+## 🏗️ Arquitectura Técnica
+
+### Transport Layer
+
+- **StreamableHTTP**: Transport moderno stateless (HTTP-based)
+- **Deprecado**: SSE (Server-Sent Events) - removido en v2.0.0
+- **Ventajas**: Sin estado, escalable, compatible con proxies/load balancers
+
+### MCP SDK
+
+- **Version**: 1.19.1
+- **API**: McpServer high-level (reemplaza Server low-level)
+- **Validación**: Zod schemas automáticos en inputSchema/outputSchema
+- **Registro**: `server.registerTool(name, config, handler)`
+
+### Herramientas Modularizadas
+
+```typescript
+// src/mcp/tools/list-drives.ts
+export const listDrivesTool = {
+  name: "list_drives",
+  config: { title, description, inputSchema, outputSchema },
+  handler: async (params) => {
+    /* ... */
+  },
+};
+
+// src/mcp/server.ts (33 líneas)
+const toolList = Object.values(tools);
+toolList.forEach((tool) => {
+  server.registerTool(tool.name, tool.config, tool.handler);
+});
+```
+
+### Path Aliases
+
+```typescript
+// tsconfig.json
+"baseUrl": ".",
+"paths": {
+  "@/*": ["src/*"]
+}
+
+// En código
+import { logger } from "@/utils/logger.js";
+import { googleDriveService } from "@/services/drive-service.js";
+```
+
+**Nota**: Los imports usan extensión `.js` aunque los archivos sean `.ts` (requisito de TypeScript ESM con `"module": "NodeNext"`)
 
 ## 📝 Tipos MIME Soportados
 
